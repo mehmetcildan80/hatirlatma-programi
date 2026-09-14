@@ -1,0 +1,35 @@
+# Python sanal ortamları ve önbellekleri
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editör ve işletim sistemi dosyaları
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+*.log
+~$*
+
+# Paketleme ve derleme çıktıları
+build/
+dist/
+*.egg-info/
+*.spec
+
+# Yerel veriler ve makineye özel ayarlar
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+.env
+.env.*
+

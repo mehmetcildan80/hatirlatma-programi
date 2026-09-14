@@ -1,0 +1,2 @@
+"""Hatırlatıcı masaüstü uygulaması."""
+

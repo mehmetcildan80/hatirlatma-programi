@@ -1,0 +1,2 @@
+"""İş kuralları ve modeller."""
+

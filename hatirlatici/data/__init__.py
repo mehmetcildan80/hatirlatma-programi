@@ -1,0 +1,2 @@
+"""SQLite veri erişim katmanı."""
+
