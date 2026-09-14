@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -11,6 +12,31 @@ SHORTCUT_NAME = "Hatirlatici.lnk"
 
 class StartupError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class StartupLaunch:
+    executable: Path
+    arguments: str
+    working_directory: Path
+
+
+def startup_launch(
+    app_script: Path,
+    *,
+    frozen: bool | None = None,
+    executable: Path | None = None,
+) -> StartupLaunch:
+    """Kaynak kod ve paketlenmiş EXE için güvenli başlangıç komutunu üretir."""
+    app_script = app_script.resolve()
+    runtime = (executable or Path(sys.executable)).resolve()
+    is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+    if is_frozen:
+        return StartupLaunch(runtime, "--startup", runtime.parent)
+
+    pythonw = runtime.with_name("pythonw.exe")
+    interpreter = pythonw if pythonw.exists() else runtime
+    return StartupLaunch(interpreter, f'"{app_script}" --startup', app_script.parent)
 
 
 class StartupManager:
@@ -41,12 +67,11 @@ class StartupManager:
             return
 
         shortcut.parent.mkdir(parents=True, exist_ok=True)
-        pythonw = Path(sys.executable).with_name("pythonw.exe")
-        executable = pythonw if pythonw.exists() else Path(sys.executable)
+        launch = startup_launch(self.app_script)
         command = (
             "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:HATIRLATICI_SHORTCUT);"
             "$s.TargetPath=$env:HATIRLATICI_TARGET;"
-            "$s.Arguments='\"'+$env:HATIRLATICI_SCRIPT+'\" --startup';"
+            "$s.Arguments=$env:HATIRLATICI_ARGUMENTS;"
             "$s.WorkingDirectory=$env:HATIRLATICI_WORKING;"
             "$s.Description='Hatırlatıcı';$s.Save()"
         )
@@ -54,9 +79,9 @@ class StartupManager:
         process_environment.update(
             {
                 "HATIRLATICI_SHORTCUT": str(shortcut),
-                "HATIRLATICI_TARGET": str(executable),
-                "HATIRLATICI_SCRIPT": str(self.app_script),
-                "HATIRLATICI_WORKING": str(self.app_script.parent),
+                "HATIRLATICI_TARGET": str(launch.executable),
+                "HATIRLATICI_ARGUMENTS": launch.arguments,
+                "HATIRLATICI_WORKING": str(launch.working_directory),
             }
         )
         result = subprocess.run(

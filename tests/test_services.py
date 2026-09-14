@@ -9,6 +9,7 @@ from hatirlatici.data.database import Database
 from hatirlatici.data.repositories import ReminderRepository, SettingsRepository, TaskRepository
 from hatirlatici.domain.models import Task
 from hatirlatici.domain.services import ReminderService, SettingsService, TaskService, ValidationError
+from hatirlatici.platform.startup import startup_launch
 
 
 class ServiceTests(unittest.TestCase):
@@ -154,6 +155,34 @@ class ServiceTests(unittest.TestCase):
         self.assertIsNone(self.reminder_service.check_due())
         self.now = datetime(2026, 9, 14, 17, 0)
         self.assertIsNotNone(self.reminder_service.check_due())
+
+
+class StartupLaunchTests(unittest.TestCase):
+    def test_packaged_startup_targets_executable(self) -> None:
+        executable = Path("C:/Portable/Hatirlatici.exe")
+        launch = startup_launch(
+            Path("C:/Source/app.py"), frozen=True, executable=executable
+        )
+        self.assertEqual(launch.executable, executable)
+        self.assertEqual(launch.arguments, "--startup")
+        self.assertEqual(launch.working_directory, executable.parent)
+
+    def test_source_startup_targets_pythonw_and_app_script(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            python = root / "python.exe"
+            pythonw = root / "pythonw.exe"
+            python.touch()
+            pythonw.touch()
+            script = root / "project" / "app.py"
+            script.parent.mkdir()
+            script.touch()
+
+            launch = startup_launch(script, frozen=False, executable=python)
+
+            self.assertEqual(launch.executable, pythonw.resolve())
+            self.assertEqual(launch.arguments, f'"{script.resolve()}" --startup')
+            self.assertEqual(launch.working_directory, script.parent.resolve())
 
 
 if __name__ == "__main__":

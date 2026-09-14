@@ -21,7 +21,7 @@ saatte ertesi günün açık görevlerini özel bir uyarı penceresinde gösteri
 
 - Windows 10 veya Windows 11
 - Python 3.10 veya üzeri
-- PySide6 6.7 veya üzeri
+- PySide6 6.8.3 (desteklenen aralık: `>=6.8.3,<6.9`)
 
 ## Kurulum ve çalıştırma
 
@@ -38,6 +38,29 @@ Uygulamayı daha sonra çalıştırmak için:
 python app.py
 ```
 
+## Windows EXE üretimi
+
+Paketleme bağımlılıkları çalışma zamanı bağımlılıklarından ayrı tutulur:
+
+```powershell
+pip install -r requirements-build.txt
+.\build_exe.ps1
+```
+
+Farklı bir Python çalıştırıcısı kullanılacaksa:
+
+```powershell
+.\build_exe.ps1 -Python "C:\Python\python.exe"
+```
+
+Tek dosyalık, terminal penceresi açmayan çıktı `dist\Hatirlatici.exe` konumunda
+oluşur. EXE'yi çalıştırmak için hedef bilgisayarda Python veya PySide6 kurulması
+gerekmez. `build/`, `dist/` ve PyInstaller'ın oluşturduğu `.spec` dosyaları Git'e
+alınmaz; aynı betikle tekrar üretilebilir.
+
+Paketleme betiği, PySide6 DLL dizinini Windows yükleme sırasına güvenli şekilde
+ekleyen proje içi `pyi_runtime_hook.py` kancasını otomatik kullanır.
+
 ## Yerel veri konumu
 
 Görevler, ayarlar ve günlük hatırlatma kayıtları aşağıdaki kullanıcıya özel
@@ -48,6 +71,9 @@ konumda saklanır:
 ```
 
 Bu veritabanı proje klasöründe değildir ve Git'e eklenmez.
+
+EXE kendi klasörüne kullanıcı verisi yazmaz ve normal kullanıcı yetkileriyle
+çalışır; yönetici veya UAC yükseltmesi istemez.
 
 ## Windows Startup davranışı
 
@@ -62,6 +88,14 @@ Startup üzerinden çalıştırıldığında ana pencere açılmaz ve uygulama s
 tepsisinde başlar. Zamanı geçmiş, onaylanmamış bir hatırlatma varsa uyarı
 penceresi yine gösterilir. Yönetici yetkisi, Registry veya Task Scheduler
 kullanılmaz.
+
+Kaynak koddan çalıştırıldığında kısayol `pythonw.exe` ve `app.py` dosyasını;
+paketlenmiş sürümden çalıştırıldığında doğrudan mevcut `Hatirlatici.exe` dosyasını
+`--startup` argümanıyla hedefler.
+
+Kurumsal bilgisayarlardaki Defender, SmartScreen, AppLocker veya kurum
+politikaları imzasız yerel EXE'leri engelleyebilir. Uygulama bu güvenlik
+mekanizmalarını aşmaya veya değiştirmeye çalışmaz.
 
 ## Testler
 
@@ -81,7 +115,7 @@ için sistem tepsisi menüsündeki **Çıkış** seçilmelidir. Hatırlatma yaln
 
 ## Henüz eklenmeyen özellikler
 
-- EXE paketleme ve installer
+- Installer
 - Otomatik güncelleme
 - Ağ, bulut ve çok kullanıcılı çalışma
 - Outlook veya Google entegrasyonu
