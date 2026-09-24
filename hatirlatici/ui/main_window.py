@@ -21,24 +21,8 @@ from hatirlatici.domain.models import Task
 from hatirlatici.domain.services import ReminderService, SettingsService, TaskService, ValidationError
 from hatirlatici.platform.startup import StartupError, StartupManager
 from hatirlatici.ui.reminder_dialog import ReminderDialog
+from hatirlatici.ui.styles import APP_STYLE
 from hatirlatici.ui.task_dialog import TaskDialog
-
-
-STYLE = """
-QMainWindow { background: #f4f6f8; }
-QFrame#sidebar { background: #17263c; }
-QLabel#brand { color: white; font-size: 20px; font-weight: 700; padding: 18px 12px; }
-QListWidget { background: transparent; color: #dce5ef; border: 0; font-size: 14px; outline: 0; }
-QListWidget::item { padding: 12px 16px; margin: 2px 8px; border-radius: 5px; }
-QListWidget::item:selected { background: #2d5f8f; color: white; }
-QLabel#pageTitle { color: #17263c; font-size: 24px; font-weight: 700; }
-QTableWidget { background: white; border: 1px solid #d9e0e7; border-radius: 6px; gridline-color: #edf0f3; }
-QHeaderView::section { background: #e9eef3; color: #26394f; padding: 8px; border: 0; font-weight: 600; }
-QPushButton { background: #2d5f8f; color: white; border: 0; border-radius: 5px; padding: 9px 15px; font-weight: 600; }
-QPushButton:hover { background: #244d74; }
-QPushButton#secondary { background: #667788; }
-QPushButton#danger { background: #a83d45; }
-"""
 
 
 class MainWindow(QMainWindow):
@@ -61,7 +45,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Hatırlatıcı")
         self.resize(980, 620)
         self.setMinimumSize(820, 520)
-        self.setStyleSheet(STYLE)
+        self.setStyleSheet(APP_STYLE)
 
         root = QWidget()
         root_layout = QHBoxLayout(root)
@@ -72,10 +56,12 @@ class MainWindow(QMainWindow):
         sidebar.setFixedWidth(205)
         side_layout = QVBoxLayout(sidebar)
         brand = QLabel("HATIRLATICI", objectName="brand")
-        self.navigation = QListWidget()
+        brand_caption = QLabel("Görev ve hatırlatma", objectName="brandCaption")
+        self.navigation = QListWidget(objectName="navigation")
         for label in ("Bugün", "Yarın", "Tüm Görevler", "Yeni Görev", "Ayarlar"):
             self.navigation.addItem(label)
         side_layout.addWidget(brand)
+        side_layout.addWidget(brand_caption)
         side_layout.addWidget(self.navigation)
 
         self.stack = QStackedWidget()
@@ -120,34 +106,45 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(28, 24, 28, 28)
         layout.setSpacing(14)
+        page_header = QHBoxLayout()
+        heading = QVBoxLayout()
+        heading.setSpacing(2)
         self.page_title = QLabel("Bugün", objectName="pageTitle")
+        self.page_caption = QLabel("Görevlerinizi düzenleyin ve durumlarını takip edin.", objectName="pageCaption")
+        heading.addWidget(self.page_title)
+        heading.addWidget(self.page_caption)
+        page_header.addLayout(heading, 1)
+        header_add_button = QPushButton("+  Yeni Görev")
+        header_add_button.clicked.connect(self.add_task)
+        page_header.addWidget(header_add_button, 0, Qt.AlignmentFlag.AlignVCenter)
         self.empty_label = QLabel()
-        self.empty_label.setStyleSheet("color: #667788;")
+        self.empty_label.setObjectName("muted")
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["Durum", "Başlık", "Tarih", "Saat", "Açıklama"])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(46)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table.doubleClicked.connect(self.edit_selected)
 
         button_row = QHBoxLayout()
-        add_button = QPushButton("Yeni Görev")
         edit_button = QPushButton("Düzenle", objectName="secondary")
         complete_button = QPushButton("Tamamlandı / Açık", objectName="secondary")
         delete_button = QPushButton("Sil", objectName="danger")
-        add_button.clicked.connect(self.add_task)
         edit_button.clicked.connect(self.edit_selected)
         complete_button.clicked.connect(self.toggle_selected)
         delete_button.clicked.connect(self.delete_selected)
-        for button in (add_button, edit_button, complete_button, delete_button):
+        for button in (edit_button, complete_button, delete_button):
             button_row.addWidget(button)
         button_row.addStretch()
 
-        layout.addWidget(self.page_title)
+        layout.addLayout(page_header)
         layout.addWidget(self.empty_label)
         layout.addWidget(self.table, 1)
         layout.addLayout(button_row)
@@ -159,7 +156,15 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(28, 24, 28, 28)
         layout.setSpacing(14)
         layout.addWidget(QLabel("Ayarlar", objectName="pageTitle"))
-        layout.addWidget(QLabel("Tüm görevler için genel hatırlatma saati"))
+        layout.addWidget(QLabel("Hatırlatma ve Windows başlangıç tercihlerinizi yönetin.", objectName="pageCaption"))
+        card = QFrame(objectName="settingsCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(20, 18, 20, 20)
+        card_layout.setSpacing(12)
+        reminder_title = QLabel("Genel hatırlatma saati")
+        reminder_title.setStyleSheet("font-weight:700; font-size:15px;")
+        card_layout.addWidget(reminder_title)
+        card_layout.addWidget(QLabel("Her gün bu saatte ertesi günün açık görevleri kontrol edilir.", objectName="muted"))
         self.reminder_time = QTimeEdit()
         self.reminder_time.setDisplayFormat("HH:mm")
         self.reminder_time.setMaximumWidth(140)
@@ -167,12 +172,13 @@ class MainWindow(QMainWindow):
         save_button = QPushButton("Ayarı Kaydet")
         save_button.setMaximumWidth(160)
         save_button.clicked.connect(self.save_settings)
-        layout.addWidget(self.reminder_time)
-        layout.addWidget(self.start_with_windows)
-        layout.addWidget(save_button)
-        info = QLabel("Bu aşamada saat yalnızca kaydedilir; gerçek uyarı özelliği henüz etkin değildir.")
-        info.setStyleSheet("color: #667788;")
-        layout.addWidget(info)
+        card_layout.addWidget(self.reminder_time)
+        card_layout.addSpacing(6)
+        card_layout.addWidget(self.start_with_windows)
+        card_layout.addWidget(QLabel("Uygulama oturum açıldığında ana pencereyi göstermeden sistem tepsisinde başlar.", objectName="muted"))
+        card_layout.addSpacing(6)
+        card_layout.addWidget(save_button, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(card)
         layout.addStretch()
         return page
 
@@ -211,6 +217,8 @@ class MainWindow(QMainWindow):
                     item = QTableWidgetItem(value)
                     if task.completed:
                         item.setForeground(QColor("#718096"))
+                        item.setBackground(QColor("#edf8f1"))
+                    item.setToolTip(value)
                     self.table.setItem(row, column, item)
             self.empty_label.setText("Bu bölümde görev bulunmuyor." if not self.tasks else f"{len(self.tasks)} görev")
         except (sqlite3.Error, OSError, ValueError) as error:
