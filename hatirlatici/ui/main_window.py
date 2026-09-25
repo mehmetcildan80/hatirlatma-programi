@@ -20,6 +20,7 @@ from hatirlatici.data.repositories import ReminderRepository, SettingsRepository
 from hatirlatici.domain.models import Task
 from hatirlatici.domain.services import ReminderService, SettingsService, TaskService, ValidationError
 from hatirlatici.platform.startup import StartupError, StartupManager
+from hatirlatici.platform.power import PowerResumeWatcher
 from hatirlatici.ui.reminder_dialog import ReminderDialog
 from hatirlatici.ui.styles import APP_STYLE
 from hatirlatici.ui.task_dialog import TaskDialog
@@ -80,6 +81,12 @@ class MainWindow(QMainWindow):
         self.reminder_timer.setInterval(30_000)
         self.reminder_timer.timeout.connect(self.check_reminder)
         self.reminder_timer.start()
+        self.power_resume_watcher = PowerResumeWatcher(self)
+        self.power_resume_watcher.resumed.connect(self._handle_power_resume)
+        app = QApplication.instance()
+        if app:
+            app.installNativeEventFilter(self.power_resume_watcher)
+            app.applicationStateChanged.connect(self._handle_application_state)
 
     def _create_tray_icon(self) -> None:
         icon = self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogInfoView)
@@ -287,12 +294,16 @@ class MainWindow(QMainWindow):
 
     def check_reminder(self) -> None:
         if self.reminder_dialog and self.reminder_dialog.isVisible():
+            self.reminder_dialog.raise_()
+            self.reminder_dialog.activateWindow()
             return
         try:
             due = self.reminder_service.check_due()
             if not due:
                 return
-            dialog = ReminderDialog(due, self)
+            # Ana pencere sistem tepsisinde gizliyken çocuk pencereler Windows'ta
+            # görünmez. Hatırlatma bağımsız üst seviye pencere olmalıdır.
+            dialog = ReminderDialog(due)
             dialog.acknowledged.connect(self._acknowledge_reminder)
             dialog.snoozed.connect(self._snooze_reminder)
             self.reminder_dialog = dialog
@@ -301,6 +312,15 @@ class MainWindow(QMainWindow):
             dialog.activateWindow()
         except (ValidationError, sqlite3.Error, OSError, ValueError) as error:
             self._show_error("Hatırlatma kontrol edilemedi.", error)
+
+    def _handle_power_resume(self) -> None:
+        # Windows güç iletisi olay döngüsünün ortasında gelir; kontrolü bir
+        # sonraki Qt turuna bırakarak ekran ve saat bilgisinin yerleşmesini bekle.
+        QTimer.singleShot(0, self.check_reminder)
+
+    def _handle_application_state(self, state: Qt.ApplicationState) -> None:
+        if state == Qt.ApplicationState.ApplicationActive:
+            QTimer.singleShot(0, self.check_reminder)
 
     def _acknowledge_reminder(self) -> None:
         if not self.reminder_dialog:

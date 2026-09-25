@@ -21,6 +21,22 @@ from hatirlatici.ui.main_window import MainWindow
 from hatirlatici.ui.reminder_dialog import ReminderDialog, sorted_reminder_tasks, turkish_date
 
 
+class FakeReminderService:
+    def __init__(self, due: ReminderDue | None = None) -> None:
+        self.due = due
+        self.check_count = 0
+
+    def check_due(self) -> ReminderDue | None:
+        self.check_count += 1
+        return self.due
+
+    def acknowledge(self, reminder_date: date) -> None:
+        pass
+
+    def snooze(self, reminder_date: date, minutes: int = 10) -> None:
+        pass
+
+
 class ReminderDialogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -73,6 +89,28 @@ class ReminderDialogTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(acknowledged.count(), 0)
 
+    def test_snooze_does_not_emit_acknowledgement(self) -> None:
+        dialog = ReminderDialog(self.due(1))
+        acknowledged = QSignalSpy(dialog.acknowledged)
+        snoozed = QSignalSpy(dialog.snoozed)
+        snooze = next(
+            button for button in dialog.findChildren(QPushButton)
+            if button.text() == "10 dakika sonra tekrar hatırlat"
+        )
+        snooze.click()
+        self.assertEqual(acknowledged.count(), 0)
+        self.assertEqual(snoozed.count(), 1)
+
+    def test_only_confirm_button_emits_acknowledgement(self) -> None:
+        dialog = ReminderDialog(self.due(1))
+        acknowledged = QSignalSpy(dialog.acknowledged)
+        confirm = next(
+            button for button in dialog.findChildren(QPushButton)
+            if button.text() == "Gördüm / Onayla"
+        )
+        confirm.click()
+        self.assertEqual(acknowledged.count(), 1)
+
     def test_main_window_can_be_constructed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "ui.db")
@@ -86,6 +124,40 @@ class ReminderDialogTests(unittest.TestCase):
                 StartupManager(Path(directory) / "app.py"),
             )
             self.assertEqual(window.windowTitle(), "Hatırlatıcı")
+            window.quit_application()
+
+    def test_power_resume_schedules_reminder_check(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "ui.db")
+            database.initialize()
+            tasks = TaskRepository(database)
+            settings = SettingsService(SettingsRepository(database))
+            reminder = FakeReminderService()
+            window = MainWindow(
+                TaskService(tasks), settings, reminder, StartupManager(Path(directory) / "app.py")
+            )
+            before = reminder.check_count
+            window._handle_power_resume()
+            self.app.processEvents()
+            self.assertGreater(reminder.check_count, before)
+            window.quit_application()
+
+    def test_hidden_tray_window_does_not_block_reminder(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "ui.db")
+            database.initialize()
+            tasks = TaskRepository(database)
+            settings = SettingsService(SettingsRepository(database))
+            reminder = FakeReminderService(self.due(1))
+            window = MainWindow(
+                TaskService(tasks), settings, reminder, StartupManager(Path(directory) / "app.py")
+            )
+            window.hide()
+            window.check_reminder()
+            self.app.processEvents()
+            self.assertIsNotNone(window.reminder_dialog)
+            self.assertTrue(window.reminder_dialog.isVisible())  # type: ignore[union-attr]
+            window.reminder_dialog.close()  # type: ignore[union-attr]
             window.quit_application()
 
 
