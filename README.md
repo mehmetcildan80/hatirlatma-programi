@@ -7,6 +7,7 @@ saatte ertesi günün açık görevlerini özel bir uyarı penceresinde gösteri
 ## Mevcut özellikler
 
 - Görev ekleme, listeleme, düzenleme ve silme
+- Aynı tarih için çok sayıda görevi tek transaction ile toplu ekleme
 - Görevleri tamamlandı veya açık olarak işaretleme
 - Bugün, Yarın ve Tüm Görevler görünümleri
 - SQLite üzerinde kalıcı yerel veri saklama

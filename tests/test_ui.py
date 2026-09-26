@@ -37,6 +37,25 @@ class FakeReminderService:
         pass
 
 
+def dispose_window(window: MainWindow) -> None:
+    app = QApplication.instance()
+    window.reminder_timer.stop()
+    if window.reminder_dialog:
+        window.reminder_dialog.close()
+    window.tray_icon.hide()
+    if app:
+        app.removeNativeEventFilter(window.power_resume_watcher)
+        try:
+            app.applicationStateChanged.disconnect(window._handle_application_state)
+        except (RuntimeError, TypeError):
+            pass
+    window._really_quit = True
+    window.close()
+    window.deleteLater()
+    if app:
+        app.processEvents()
+
+
 class ReminderDialogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -124,7 +143,7 @@ class ReminderDialogTests(unittest.TestCase):
                 StartupManager(Path(directory) / "app.py"),
             )
             self.assertEqual(window.windowTitle(), "Hatırlatıcı")
-            window.quit_application()
+            dispose_window(window)
 
     def test_power_resume_schedules_reminder_check(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -140,7 +159,7 @@ class ReminderDialogTests(unittest.TestCase):
             window._handle_power_resume()
             self.app.processEvents()
             self.assertGreater(reminder.check_count, before)
-            window.quit_application()
+            dispose_window(window)
 
     def test_hidden_tray_window_does_not_block_reminder(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -158,7 +177,7 @@ class ReminderDialogTests(unittest.TestCase):
             self.assertIsNotNone(window.reminder_dialog)
             self.assertTrue(window.reminder_dialog.isVisible())  # type: ignore[union-attr]
             window.reminder_dialog.close()  # type: ignore[union-attr]
-            window.quit_application()
+            dispose_window(window)
 
 
 if __name__ == "__main__":

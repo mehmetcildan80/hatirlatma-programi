@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Callable
 
 from hatirlatici.data.repositories import ReminderRepository, SettingsRepository, TaskRepository
-from hatirlatici.domain.models import Task
+from hatirlatici.domain.models import BulkTaskDraft, Task
 
 
 class ValidationError(ValueError):
@@ -28,6 +29,40 @@ class TaskService:
     def add(self, task: Task) -> Task:
         self._validate(task)
         return self.repository.add(task)
+
+    def add_bulk(self, drafts: list[BulkTaskDraft], due_date: date) -> int:
+        if not isinstance(due_date, date):
+            raise ValidationError("Ortak tarih geçerli değil.")
+
+        tasks: list[Task] = []
+        errors: list[str] = []
+        for row_number, draft in enumerate(drafts, start=1):
+            title = draft.title.strip()
+            description = draft.description.strip()
+            time_text = draft.time_text.strip()
+            if not title and not description and not time_text:
+                continue
+            if not title:
+                errors.append(f"{row_number}. satır: Görev başlığı boş bırakılamaz.")
+                continue
+            if time_text and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_text):
+                errors.append(f"{row_number}. satır: Saat HH:MM biçiminde olmalıdır.")
+                continue
+            due_time = time.fromisoformat(time_text) if time_text else None
+            task = Task(title, due_date, description, due_time)
+            try:
+                self._validate(task)
+            except ValidationError as error:
+                errors.append(f"{row_number}. satır: {error}")
+                continue
+            tasks.append(task)
+
+        if errors:
+            raise ValidationError("\n".join(errors))
+        if not tasks:
+            raise ValidationError("Kaydedilecek en az bir geçerli görev girin.")
+        self.repository.add_many(tasks)
+        return len(tasks)
 
     def update(self, task: Task) -> None:
         self._validate(task)

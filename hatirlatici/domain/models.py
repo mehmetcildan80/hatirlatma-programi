@@ -13,3 +13,9 @@ class Task:
     completed: bool = False
     id: int | None = None
 
+
+@dataclass(slots=True)
+class BulkTaskDraft:
+    title: str = ""
+    time_text: str = ""
+    description: str = ""

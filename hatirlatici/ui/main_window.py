@@ -24,6 +24,7 @@ from hatirlatici.platform.power import PowerResumeWatcher
 from hatirlatici.ui.reminder_dialog import ReminderDialog
 from hatirlatici.ui.styles import APP_STYLE
 from hatirlatici.ui.task_dialog import TaskDialog
+from hatirlatici.ui.bulk_task_dialog import BulkTaskDialog
 
 
 class MainWindow(QMainWindow):
@@ -121,8 +122,11 @@ class MainWindow(QMainWindow):
         heading.addWidget(self.page_title)
         heading.addWidget(self.page_caption)
         page_header.addLayout(heading, 1)
+        bulk_add_button = QPushButton("Toplu Görev Ekle", objectName="secondary")
+        bulk_add_button.clicked.connect(self.add_bulk_tasks)
         header_add_button = QPushButton("+  Yeni Görev")
         header_add_button.clicked.connect(self.add_task)
+        page_header.addWidget(bulk_add_button, 0, Qt.AlignmentFlag.AlignVCenter)
         page_header.addWidget(header_add_button, 0, Qt.AlignmentFlag.AlignVCenter)
         self.empty_label = QLabel()
         self.empty_label.setObjectName("muted")
@@ -239,6 +243,11 @@ class MainWindow(QMainWindow):
                 self.refresh_tasks()
             except (ValidationError, sqlite3.Error, OSError) as error:
                 self._show_error("Görev kaydedilemedi.", error)
+
+    def add_bulk_tasks(self) -> None:
+        dialog = BulkTaskDialog(self.task_service, self)
+        if dialog.exec() == BulkTaskDialog.DialogCode.Accepted:
+            self.refresh_tasks()
 
     def edit_selected(self) -> None:
         task = self._selected_task()

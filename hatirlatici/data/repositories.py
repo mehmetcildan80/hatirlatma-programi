@@ -38,6 +38,24 @@ class TaskRepository:
             task.id = cursor.lastrowid
         return task
 
+    def add_many(self, tasks: list[Task]) -> list[Task]:
+        """Tüm görevleri tek SQLite transaction içinde kaydeder."""
+        with self.database.session() as connection:
+            for task in tasks:
+                cursor = connection.execute(
+                    """INSERT INTO tasks(title, description, due_date, due_time, completed)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        task.title,
+                        task.description,
+                        task.due_date.isoformat(),
+                        task.due_time.strftime("%H:%M") if task.due_time else None,
+                        int(task.completed),
+                    ),
+                )
+                task.id = cursor.lastrowid
+        return tasks
+
     def get(self, task_id: int) -> Task | None:
         with self.database.session() as connection:
             row = connection.execute(
