@@ -1,28 +1,16 @@
 from __future__ import annotations
 
-import os
-import traceback
-from pathlib import Path
-
-
-def _write_crash_log() -> Path:
-    base = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Hatirlatici"
-    base.mkdir(parents=True, exist_ok=True)
-    log_path = base / "hatirlatici.log"
-    log_path.write_text(traceback.format_exc(), encoding="utf-8")
-    return log_path
+from hatirlatici.platform.logging_setup import configure_logging, log_event
 
 
 def main() -> int:
+    configure_logging()
     try:
         from hatirlatici.ui.main_window import run
 
         return run()
-    except Exception:
-        try:
-            _write_crash_log()
-        except OSError:
-            pass
+    except Exception as error:
+        log_event("unexpected_crash", error_type=type(error).__name__)
         raise
 
 

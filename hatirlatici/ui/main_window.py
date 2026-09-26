@@ -14,13 +14,16 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTimeEdit, QVBoxLayout, QWidget, QHeaderView,
 )
 
-from hatirlatici.config import database_path
+from hatirlatici import __version__
+from hatirlatici.config import backup_dir, database_path
 from hatirlatici.data.database import Database
 from hatirlatici.data.repositories import ReminderRepository, SettingsRepository, TaskRepository
 from hatirlatici.domain.models import Task
 from hatirlatici.domain.services import ReminderService, SettingsService, TaskService, ValidationError
 from hatirlatici.platform.startup import StartupError, StartupManager
 from hatirlatici.platform.power import PowerResumeWatcher
+from hatirlatici.platform.logging_setup import log_event
+from hatirlatici.platform.single_instance import SingleInstanceGuard
 from hatirlatici.ui.reminder_dialog import ReminderDialog
 from hatirlatici.ui.styles import APP_STYLE
 from hatirlatici.ui.task_dialog import TaskDialog
@@ -34,12 +37,14 @@ class MainWindow(QMainWindow):
         settings_service: SettingsService,
         reminder_service: ReminderService,
         startup_manager: StartupManager,
+        database: Database | None = None,
     ) -> None:
         super().__init__()
         self.task_service = task_service
         self.settings_service = settings_service
         self.reminder_service = reminder_service
         self.startup_manager = startup_manager
+        self.database = database
         self.current_filter = "today"
         self.tasks: list[Task] = []
         self.reminder_dialog: ReminderDialog | None = None
@@ -189,6 +194,12 @@ class MainWindow(QMainWindow):
         card_layout.addWidget(QLabel("Uygulama oturum açıldığında ana pencereyi göstermeden sistem tepsisinde başlar.", objectName="muted"))
         card_layout.addSpacing(6)
         card_layout.addWidget(save_button, 0, Qt.AlignmentFlag.AlignLeft)
+        backup_button = QPushButton("Veritabanını Yedekle", objectName="secondary")
+        backup_button.setMaximumWidth(190)
+        backup_button.clicked.connect(self.create_backup)
+        card_layout.addSpacing(8)
+        card_layout.addWidget(QLabel("Yedek, kullanıcı veri klasöründeki backups dizinine güvenli SQLite kopyası olarak yazılır.", objectName="muted"))
+        card_layout.addWidget(backup_button, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(card)
         layout.addStretch()
         return page
@@ -316,15 +327,18 @@ class MainWindow(QMainWindow):
             dialog.acknowledged.connect(self._acknowledge_reminder)
             dialog.snoozed.connect(self._snooze_reminder)
             self.reminder_dialog = dialog
+            log_event("reminder_shown", count=len(due.tasks))
             dialog.show()
             dialog.raise_()
             dialog.activateWindow()
-        except (ValidationError, sqlite3.Error, OSError, ValueError) as error:
+        except Exception as error:
+            log_event("reminder_check_failed", error_type=type(error).__name__)
             self._show_error("Hatırlatma kontrol edilemedi.", error)
 
     def _handle_power_resume(self) -> None:
         # Windows güç iletisi olay döngüsünün ortasında gelir; kontrolü bir
         # sonraki Qt turuna bırakarak ekran ve saat bilgisinin yerleşmesini bekle.
+        log_event("power_resume")
         QTimer.singleShot(0, self.check_reminder)
 
     def _handle_application_state(self, state: Qt.ApplicationState) -> None:
@@ -336,6 +350,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.reminder_service.acknowledge(self.reminder_dialog.due.reminder_date)
+            log_event("reminder_acknowledged")
             self.reminder_dialog.close()
         except (ValidationError, sqlite3.Error, OSError) as error:
             self._show_error("Hatırlatma onaylanamadı.", error)
@@ -345,6 +360,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.reminder_service.snooze(self.reminder_dialog.due.reminder_date, 10)
+            log_event("reminder_snoozed")
             self.reminder_dialog.close()
         except (ValidationError, sqlite3.Error, OSError) as error:
             self._show_error("Hatırlatma ertelenemedi.", error)
@@ -365,7 +381,24 @@ class MainWindow(QMainWindow):
     def quit_application(self) -> None:
         self._really_quit = True
         self.tray_icon.hide()
+        log_event("application_exit")
         QApplication.instance().quit()  # type: ignore[union-attr]
+
+    def create_backup(self) -> None:
+        if self.database is None:
+            self._show_error("Yedek oluşturulamadı.", RuntimeError("Veritabanı bağlantısı hazır değil."))
+            return
+        try:
+            destination = self.database.create_backup(backup_dir())
+            log_event("database_backup_created", status="success")
+            QMessageBox.information(
+                self,
+                "Yedekleme Tamamlandı",
+                f"Veritabanı yedeği oluşturuldu:\n\n{destination}",
+            )
+        except (sqlite3.Error, OSError) as error:
+            log_event("database_backup_failed", error_type=type(error).__name__)
+            self._show_error("Veritabanı yedeklenemedi.", error)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._really_quit:
@@ -375,6 +408,7 @@ class MainWindow(QMainWindow):
             self.hide()
 
     def _show_error(self, message: str, error: Exception) -> None:
+        log_event("error_dialog", error_type=type(error).__name__)
         QMessageBox.critical(self, "Hata", f"{message}\n\nAyrıntı: {error}")
 
 
@@ -382,6 +416,10 @@ def run() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Hatırlatıcı")
     app.setQuitOnLastWindowClosed(False)
+    instance_guard = SingleInstanceGuard()
+    if not instance_guard.acquire():
+        log_event("secondary_instance_forwarded")
+        return 0
     try:
         database = Database(database_path())
         database.initialize()
@@ -392,12 +430,19 @@ def run() -> int:
             settings_service,
             ReminderService(task_repository, ReminderRepository(database), settings_service),
             StartupManager(Path(__file__).resolve().parents[2] / "app.py"),
+            database,
         )
+        instance_guard.show_requested.connect(window.show_main_window)
         started_by_windows = "--startup" in sys.argv[1:]
+        log_event("application_start", reason="startup" if started_by_windows else "manual", version=__version__)
         if not started_by_windows:
             window.show()
         QTimer.singleShot(0, window.check_reminder)
-        return app.exec()
-    except (sqlite3.Error, OSError) as error:
+        result = app.exec()
+        instance_guard.close()
+        return result
+    except Exception as error:
+        instance_guard.close()
+        log_event("application_start_failed", error_type=type(error).__name__)
         QMessageBox.critical(None, "Başlatma Hatası", f"Uygulama başlatılamadı.\n\nAyrıntı: {error}")
         return 1

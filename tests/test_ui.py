@@ -37,6 +37,11 @@ class FakeReminderService:
         pass
 
 
+class FailingReminderService(FakeReminderService):
+    def check_due(self) -> ReminderDue | None:
+        raise RuntimeError("beklenmeyen deneme hatası")
+
+
 def dispose_window(window: MainWindow) -> None:
     app = QApplication.instance()
     window.reminder_timer.stop()
@@ -143,6 +148,7 @@ class ReminderDialogTests(unittest.TestCase):
                 StartupManager(Path(directory) / "app.py"),
             )
             self.assertEqual(window.windowTitle(), "Hatırlatıcı")
+            self.assertTrue(window.tray_icon.isVisible())
             dispose_window(window)
 
     def test_power_resume_schedules_reminder_check(self) -> None:
@@ -177,6 +183,23 @@ class ReminderDialogTests(unittest.TestCase):
             self.assertIsNotNone(window.reminder_dialog)
             self.assertTrue(window.reminder_dialog.isVisible())  # type: ignore[union-attr]
             window.reminder_dialog.close()  # type: ignore[union-attr]
+            dispose_window(window)
+
+    def test_unexpected_reminder_error_is_reported_without_crash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "ui.db")
+            database.initialize()
+            tasks = TaskRepository(database)
+            settings = SettingsService(SettingsRepository(database))
+            window = MainWindow(
+                TaskService(tasks), settings, FailingReminderService(),
+                StartupManager(Path(directory) / "app.py")
+            )
+            shown: list[tuple[str, Exception]] = []
+            window._show_error = lambda message, error: shown.append((message, error))  # type: ignore[method-assign]
+            window.check_reminder()
+            self.assertEqual(shown[0][0], "Hatırlatma kontrol edilemedi.")
+            self.assertIsInstance(shown[0][1], RuntimeError)
             dispose_window(window)
 
 

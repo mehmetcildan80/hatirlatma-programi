@@ -17,6 +17,9 @@ saatte ertesi günün açık görevlerini özel bir uyarı penceresinde gösteri
 - Kaçırılmış hatırlatmayı sonraki başlangıçta gösterme
 - Sistem tepsisinde arka planda çalışma
 - Kullanıcıya özel Windows Startup kısayolu
+- Kullanıcı başına tek çalışan uygulama örneği; ikinci açılış mevcut pencereyi öne getirir
+- Boyutu sınırlı ve dönen teknik günlükler
+- SQLite'ın güvenli çevrimiçi yedekleme mekanizmasıyla elle yedek oluşturma
 
 ## Gereksinimler
 
@@ -73,6 +76,28 @@ konumda saklanır:
 
 Bu veritabanı proje klasöründe değildir ve Git'e eklenmez.
 
+Teknik uygulama günlükleri aşağıdaki klasörde tutulur:
+
+```text
+%LOCALAPPDATA%\Hatirlatici\logs
+```
+
+Günlükler görev başlığı veya açıklaması içermez; yalnızca başlangıç, kapanış,
+hatırlatma ve hata türü gibi teknik olayları kaydeder. Dosya başına boyut
+sınırı vardır ve en fazla üç eski günlük korunur.
+
+## Veritabanı yedeği
+
+Ayarlar ekranındaki **Veritabanını Yedekle** düğmesi, SQLite'ın çevrimiçi
+yedekleme API'sini kullanarak tutarlı bir kopyayı şu klasöre yazar:
+
+```text
+%LOCALAPPDATA%\Hatirlatici\backups
+```
+
+Uygulama otomatik geri yükleme yapmaz. Geri yükleme gerekirse uygulama tamamen
+kapatılmalı ve mevcut veritabanı korunarak işlem uzman denetiminde yapılmalıdır.
+
 EXE kendi klasörüne kullanıcı verisi yazmaz ve normal kullanıcı yetkileriyle
 çalışır; yönetici veya UAC yükseltmesi istemez.
 
@@ -113,10 +138,21 @@ zaman kullanılır.
 Ana pencerenin kapatma düğmesi uygulamayı gizler. Uygulamayı tamamen kapatmak
 için sistem tepsisi menüsündeki **Çıkış** seçilmelidir. Hatırlatma yalnızca
 **Gördüm / Onayla** düğmesiyle onaylanır; pencereyi kapatmak onay sayılmaz.
+Uygulama zaten çalışırken yeniden başlatılırsa ikinci kopya açılmaz; çalışan
+örneğin ana penceresi öne getirilir.
+
+## Güncelleme
+
+Yeni sürüme geçmeden önce Ayarlar ekranından veritabanı yedeği alın. Sistem
+tepsisi menüsünden uygulamayı tamamen kapatın, yeni `Hatirlatici.exe` dosyasını
+kalıcı bir klasöre koyun ve çalıştırın. Windows ile başlat seçeneği etkinse yeni
+EXE konumunu kullanması için ayarı kapatıp yeniden açın. Kullanıcı veritabanı EXE
+dışında `%LOCALAPPDATA%` altında tutulduğu için normal güncellemede korunur.
 
 ## Henüz eklenmeyen özellikler
 
 - Installer
+- GitHub Release üzerinden dağıtım ve otomatik güncelleme
 - Otomatik güncelleme
 - Ağ, bulut ve çok kullanıcılı çalışma
 - Outlook veya Google entegrasyonu

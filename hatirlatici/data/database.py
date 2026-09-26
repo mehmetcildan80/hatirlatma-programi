@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -70,3 +71,30 @@ class Database:
                     VALUES ('reminder_time', '15:00');
                 """
             )
+
+    def create_backup(self, directory: Path, now: datetime | None = None) -> Path:
+        """SQLite'ın tutarlı çevrimiçi yedekleme API'siyle güvenli kopya üretir."""
+        directory = Path(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S-%f")
+        destination = directory / f"hatirlatici-{stamp}.db"
+        temporary = destination.with_suffix(".db.tmp")
+        source: sqlite3.Connection | None = None
+        target: sqlite3.Connection | None = None
+        try:
+            source = self.connect()
+            target = sqlite3.connect(temporary)
+            source.backup(target)
+            target.commit()
+            target.close()
+            target = None
+            temporary.replace(destination)
+            return destination
+        except Exception:
+            if target is not None:
+                target.close()
+            temporary.unlink(missing_ok=True)
+            raise
+        finally:
+            if source is not None:
+                source.close()
